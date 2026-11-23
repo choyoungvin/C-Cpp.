@@ -1,0 +1,16 @@
+#include <stdio.h>
+
+struct Person {
+        char name[30];
+        int age;
+};
+
+int main() {
+    struct Person p;
+    scanf("%29s", p.name);
+    scanf("%d", &p.age);
+
+
+    printf("Your name is %s and you are %d years old.", p.name, p.age);
+
+}
