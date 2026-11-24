@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>GPS Tracking Map</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <style>
+    :root {
+      --low: #22c55e;
+      --mid: #f59e0b;
+      --high: #ef4444;
+      --ink: #111827;
+      --sub: #6b7280;
+      --card: rgba(255, 255, 255, 0.94);
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Pretendard", "Segoe UI", sans-serif;
+      color: var(--ink);
+    }
+    #map { position: absolute; inset: 0; z-index: 0; }
+
+    .card {
+      position: absolute;
+      z-index: 1000;
+      background: var(--card);
+      backdrop-filter: blur(8px);
+      border-radius: 16px;
+      box-shadow: 0 8px 28px rgba(0, 0, 0, 0.18);
+      border: 1px solid rgba(255, 255, 255, 0.6);
+    }
+
+    .title-card {
+      top: 20px; left: 20px;
+      padding: 16px 20px;
+      display: flex; align-items: center; gap: 14px;
+    }
+    .title-icon {
+      width: 44px; height: 44px;
+      border-radius: 12px;
+      background: linear-gradient(135deg, #3b82f6, #6366f1);
+      display: grid; place-items: center;
+      font-size: 22px;
+    }
+    .title-card h1 { margin: 0; font-size: 20px; letter-spacing: -0.3px; }
+    .title-card p  { margin: 2px 0 0; font-size: 13px; color: var(--sub); }
+
+    .stats-card {
+      top: 20px; right: 20px;
+      width: 260px;
+      padding: 18px;
+    }
+    .stats-card h2 {
+      margin: 0 0 12px;
+      font-size: 13px; font-weight: 600;
+      color: var(--sub);
+      text-transform: uppercase; letter-spacing: 0.6px;
+    }
+    .stat-grid {
+      display: grid; grid-template-columns: repeat(3, 1fr);
+      gap: 8px; margin-bottom: 16px;
+    }
+    .stat {
+      background: #f3f4f6;
+      border-radius: 10px;
+      padding: 10px 8px;
+      text-align: center;
+    }
+    .stat b { display: block; font-size: 18px; }
+    .stat span { font-size: 11px; color: var(--sub); }
+
+    .bar-row { display: flex; align-items: center; gap: 8px; margin: 8px 0; font-size: 13px; }
+    .bar-row .label { width: 44px; font-weight: 600; }
+    .bar-track { flex: 1; height: 8px; background: #eef0f3; border-radius: 99px; overflow: hidden; }
+    .bar-fill { height: 100%; border-radius: 99px; transition: width .6s ease; }
+    .bar-row .count { width: 28px; text-align: right; color: var(--sub); }
+
+    .btn {
+      margin-top: 14px; width: 100%;
+      border: 0; border-radius: 10px;
+      padding: 10px;
+      background: var(--ink); color: #fff;
+      font-size: 13px; font-weight: 600;
+      cursor: pointer;
+      transition: transform .1s, opacity .2s;
+    }
+    .btn:hover { opacity: .88; }
+    .btn:active { transform: scale(.98); }
+
+    .legend-card {
+      bottom: 28px; left: 20px;
+      padding: 12px 16px;
+      display: flex; gap: 16px; align-items: center;
+      font-size: 13px;
+    }
+    .legend-card .item { display: flex; align-items: center; gap: 6px; }
+    .dot { width: 12px; height: 12px; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 0 1px rgba(0,0,0,.12); }
+
+    .leaflet-popup-content-wrapper { border-radius: 12px; box-shadow: 0 6px 20px rgba(0,0,0,.2); }
+    .leaflet-popup-content { margin: 12px 14px; font-size: 13px; line-height: 1.6; }
+    .pop-title { font-weight: 700; margin-bottom: 4px; }
+    .badge {
+      display: inline-block; padding: 1px 8px;
+      border-radius: 99px; color: #fff;
+      font-size: 11px; font-weight: 700; margin-left: 4px;
+    }
+    .pop-sub { color: var(--sub); font-size: 12px; }
+
+    .pin {
+      color: #fff; font-size: 11px; font-weight: 800;
+      padding: 4px 9px; border-radius: 99px;
+      border: 2px solid #fff;
+      box-shadow: 0 2px 8px rgba(0,0,0,.3);
+      white-space: nowrap;
+    }
+
+    @media (max-width: 720px) {
+      .stats-card { top: auto; bottom: 90px; right: 12px; left: 12px; width: auto; }
+      .title-card { top: 12px; left: 12px; right: 12px; }
+      .legend-card { bottom: 20px; left: 12px; right: 12px; justify-content: space-between; }
+    }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+
+  <!-- 제목 -->
+  <div class="card title-card">
+    <div class="title-icon">📍</div>
+    <div>
+      <h1>GPS Tracking Map</h1>
+      <p id="subtitle">데이터 불러오는 중...</p>
+    </div>
+  </div>
+
+  <!-- 통계 -->
+  <div class="card stats-card">
+    <h2>Speed Summary</h2>
+    <div class="stat-grid">
+      <div class="stat"><b id="st-avg">-</b><span>평균</span></div>
+      <div class="stat"><b id="st-max">-</b><span>최고</span></div>
+      <div class="stat"><b id="st-min">-</b><span>최저</span></div>
+    </div>
+    <div id="bars"></div>
+    <button class="btn" id="resetBtn">전체 경로 보기</button>
+  </div>
+
+  <!-- 범례 -->
+  <div class="card legend-card">
+    <div class="item"><span class="dot" style="background:var(--low)"></span>Low</div>
+    <div class="item"><span class="dot" style="background:var(--mid)"></span>Mid</div>
+    <div class="item"><span class="dot" style="background:var(--high)"></span>High</div>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    // ===== 속도 구간 기준 (여기만 바꾸면 됨) =====
+    const LOW_MAX = 16;   // 16 이하 = Low
+    const MID_MAX = 20;   // 17~20 = Mid, 21 이상 = High
+
+    const LEVELS = {
+      Low:  { color: '#22c55e' },
+      Mid:  { color: '#f59e0b' },
+      High: { color: '#ef4444' }
+    };
+
+    function getLevel(speed) {
+      if (speed <= LOW_MAX) return 'Low';
+      if (speed <= MID_MAX) return 'Mid';
+      return 'High';
+    }
+
+    // ===== 지도 (OpenStreetMap 공식 타일, API 키 불필요) =====
+    const map = L.map('map', { zoomControl: false });
+    L.control.zoom({ position: 'bottomright' }).addTo(map);
+
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+    }).addTo(map);
+
+    function pinIcon(text, color) {
+      return L.divIcon({
+        className: '',
+        html: `<div class="pin" style="background:${color}">${text}</div>`,
+        iconSize: [60, 24],
+        iconAnchor: [30, 12]
+      });
+    }
+
+    // ===== 데이터 로드 =====
+    let bounds;
+
+    fetch('output.json')
+      .then(res => res.json())
+      .then(points => {
+        points.forEach(p => {
+          p.speed = parseInt(p.info.match(/\d+/)[0], 10);
+          p.level = getLevel(p.speed);
+        });
+
+        // 경로 (흰 외곽선 + 속도색 선)
+        for (let i = 1; i < points.length; i++) {
+          const a = points[i - 1], b = points[i];
+          const seg = [[a.latitude, a.longitude], [b.latitude, b.longitude]];
+          L.polyline(seg, { color: '#fff', weight: 9, opacity: 0.9, lineCap: 'round' }).addTo(map);
+          L.polyline(seg, { color: LEVELS[b.level].color, weight: 5, lineCap: 'round' }).addTo(map);
+        }
+
+        // 마커
+        points.forEach((p, i) => {
+          const color = LEVELS[p.level].color;
+          L.circleMarker([p.latitude, p.longitude], {
+            radius: 7, color: '#fff', weight: 2.5,
+            fillColor: color, fillOpacity: 1
+          })
+          .addTo(map)
+          .bindPopup(
+            `<div class="pop-title">지점 #${i + 1}
+               <span class="badge" style="background:${color}">${p.level}</span></div>
+             속도 <b>${p.speed}</b><br>
+             <span class="pop-sub">${p.latitude}, ${p.longitude}</span>`
+          )
+          .on('mouseover', function () { this.setStyle({ radius: 10 }); })
+          .on('mouseout',  function () { this.setStyle({ radius: 7 }); });
+        });
+
+        // START / END
+        const first = points[0], last = points[points.length - 1];
+        L.marker([first.latitude, first.longitude], { icon: pinIcon('START', '#2563eb'), zIndexOffset: 1000 }).addTo(map);
+        L.marker([last.latitude,  last.longitude],  { icon: pinIcon('END',   '#111827'), zIndexOffset: 1000 }).addTo(map);
+
+        // 화면 맞추기
+        bounds = L.latLngBounds(points.map(p => [p.latitude, p.longitude]));
+        const fit = () => map.fitBounds(bounds, { paddingTopLeft: [60, 120], paddingBottomRight: [300, 80] });
+        fit();
+        document.getElementById('resetBtn').onclick = fit;
+
+        // 통계
+        const speeds = points.map(p => p.speed);
+        const avg = (speeds.reduce((a, b) => a + b, 0) / speeds.length).toFixed(1);
+        document.getElementById('st-avg').textContent = avg;
+        document.getElementById('st-max').textContent = Math.max(...speeds);
+        document.getElementById('st-min').textContent = Math.min(...speeds);
+        document.getElementById('subtitle').textContent = `총 ${points.length}개 지점 기록`;
+
+        // 구간별 분포 막대
+        const counts = { Low: 0, Mid: 0, High: 0 };
+        points.forEach(p => counts[p.level]++);
+        document.getElementById('bars').innerHTML = Object.keys(LEVELS).map(name => `
+          <div class="bar-row">
+            <span class="label">${name}</span>
+            <div class="bar-track">
+              <div class="bar-fill" style="width:${counts[name] / points.length * 100}%; background:${LEVELS[name].color}"></div>
+            </div>
+            <span class="count">${counts[name]}</span>
+          </div>`).join('');
+      })
+      .catch(err => {
+        console.error(err);
+        document.getElementById('subtitle').textContent = 'JSON 로드 실패 (Live Server로 열었는지 확인)';
+      });
+  </script>
+</body>
+</html>
